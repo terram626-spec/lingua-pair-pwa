@@ -1,253 +1,69 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lingua Pair</title>
   <style>
-    :root { --bg:#0b1320; --fg:#e8eefc; --muted:#9fb0d9; --acc:#5aa7ff; }
-    body { margin:0; font-family: ui-sans-serif, system-ui, Arial; background:var(--bg); color:var(--fg); }
-    .wrap { max-width: 960px; margin: 0 auto; padding: 24px; }
-    .card { background:#0f1a2e; border:1px solid #1f2a45; border-radius:16px; padding:20px; }
-    label { display:block; font-weight:600; margin-top:10px; }
-    input, select { width:100%; padding:10px; border-radius:10px; border:1px solid #27385f; background:#0b1730; color:var(--fg); }
-    .row { display:flex; gap:12px; }
-    .row > div { flex:1; }
-    button { background:var(--acc); color:#071020; border:0; padding:12px 16px; border-radius:12px; font-weight:700; cursor:pointer; }
-    button[disabled] { opacity:.6; cursor:not-allowed; }
-    .muted { color:var(--muted); font-size:.95rem; }
-    .videos { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
-    video { width:100%; background:#000; border-radius:12px; }
-    .bar { display:flex; gap:8px; margin-top:12px; flex-wrap: wrap; }
-    .badge { display:inline-block; padding:6px 10px; border-radius:999px; border:1px solid #29406e; color:var(--muted); }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+    video { width: 100%; background:#000; border-radius: 8px; }
+    label { display:block; margin:8px 0 4px; font-weight:600; }
+    select, input, button { width: 100%; padding:10px; border-radius:8px; border:1px solid #ccc; }
+    button { cursor:pointer; font-weight:600; }
+    #status { margin: 12px 0; font-size: 14px; }
+    .muted { opacity:.7 }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Lingua Pair</h1>
-      <p class="muted">Anonymous, no profiles, no logs. Pair by language and chat.</p>
+  <h1>Lingua Pair</h1>
 
-      <div id="setup">
-        <div class="row">
-          <div>
-            <label>Screen name</label>
-            <input id="screenName" placeholder="e.g., Terra" />
-          </div>
-          <div>
-            <label>Native language</label>
-            <select id="native">
-              <option value="">Select…</option>
-              <option>English</option><option>Spanish</option><option>French</option>
-              <option>Japanese</option><option>Mandarin</option><option>Korean</option>
-              <option>German</option><option>Italian</option><option>Portuguese</option>
-            </select>
-          </div>
-        </div>
+  <div>
+    <label>Screen name</label>
+    <input id="screenName" placeholder="Your name" />
+    <label>Your native language</label>
+    <select id="native">
+      <option value="" disabled selected>Select</option>
+      <option>English</option><option>Spanish</option><option>French</option>
+      <option>German</option><option>Italian</option><option>Portuguese</option>
+      <option>Chinese</option><option>Japanese</option><option>Korean</option>
+      <option>Arabic</option><option>Hindi</option><option>Russian</option>
+    </select>
 
-        <div class="row">
-          <div>
-            <label>I want to…</label>
-            <select id="wantMode">
-              <option value="speak">speak</option>
-              <option value="hear">hear</option>
-            </select>
-          </div>
-          <div>
-            <label>…this language</label>
-            <select id="wantLang">
-              <option value="">Select…</option>
-              <option>English</option><option>Spanish</option><option>French</option>
-              <option>Japanese</option><option>Mandarin</option><option>Korean</option>
-              <option>German</option><option>Italian</option><option>Portuguese</option>
-            </select>
-          </div>
-        </div>
+    <label>I want to</label>
+    <select id="wantMode">
+      <option value="speak" selected>Speak</option>
+      <option value="hear">Hear</option>
+    </select>
 
-        <div class="bar">
-          <button id="joinBtn">Join & Allow Mic/Camera</button>
-          <span class="badge" id="status">idle</span>
-        </div>
+    <label>with a partner whose language is</label>
+    <select id="wantLang">
+      <option value="" disabled selected>Select</option>
+      <option>English</option><option>Spanish</option><option>French</option>
+      <option>German</option><option>Italian</option><option>Portuguese</option>
+      <option>Chinese</option><option>Japanese</option><option>Korean</option>
+      <option>Arabic</option><option>Hindi</option><option>Russian</option>
+    </select>
 
-        <p class="muted" style="margin-top:8px;">
-          By continuing you confirm you’re 18+, agree to be kind, and consent to live audio/video. No recording. No profiles. No logs.
-        </p>
-      </div>
+    <div style="display:flex; gap:8px; margin-top:12px;">
+      <button id="join">Find a partner</button>
+      <button id="leave" class="muted">Leave</button>
+      <button id="enableAudio" class="muted">Enable sound</button>
+    </div>
+    <div id="status">Not connected</div>
+  </div>
 
-      <div id="chat" style="display:none;">
-        <div class="bar">
-          <span class="badge" id="peerBadge">Connecting…</span>
-          <button id="nextBtn">Next partner</button>
-          <button id="muteBtn">Mute</button>
-          <button id="camBtn">Camera Off</button>
-          <button id="audioBtn" style="background:#2fd27a; display:none;">Enable sound</button>
-          <button id="leaveBtn" style="margin-left:auto;background:#ff6b6b;">Leave</button>
-        </div>
-        <div class="videos">
-          <video id="local" autoplay playsinline muted></video>
-          <video id="remote" autoplay playsinline></video>
-        </div>
-      </div>
+  <div class="row">
+    <div>
+      <h3>Me</h3>
+      <video id="localVideo" autoplay playsinline muted></video>
+    </div>
+    <div>
+      <h3>Partner</h3>
+      <video id="remoteVideo" autoplay playsinline></video>
     </div>
   </div>
 
-  <script>
-    // Fetch ICE server config
-    let ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
-    fetch("/config").then(r => r.json()).then(cfg => ICE_SERVERS = cfg.iceServers || ICE_SERVERS);
-
-    let ws, pc, localStream;
-    let polite = false;
-    let makingOffer = false, ignoreOffer = false, isSettingRemoteAnswerPending = false;
-
-    const $ = (id) => document.getElementById(id);
-    const statusEl = $("status");
-    const setupEl = $("setup");
-    const chatEl = $("chat");
-    const localVideo = $("local");
-    const remoteVideo = $("remote");
-    const peerBadge = $("peerBadge");
-    const audioBtn = document.getElementById("audioBtn");
-
-    $("joinBtn").onclick = async () => {
-      const screenName = $("screenName").value.trim() || "Guest";
-      const native = $("native").value;
-      const wantMode = $("wantMode").value;
-      const wantLang = $("wantLang").value;
-      if (!native || !wantLang) return alert("Choose your native and target languages.");
-
-      status("requesting devices…");
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      } catch (e) {
-        alert("We need mic/camera to continue.");
-        return;
-      }
-      localVideo.srcObject = localStream;
-
-      const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host;
-      ws = new WebSocket(WS_URL);
-      ws.onopen = () => {
-        status("matching…");
-        ws.send(JSON.stringify({ type: "hello", screenName, native, wantMode, wantLang }));
-      };
-      ws.onmessage = onSignal;
-      ws.onclose = () => status("disconnected");
-      ws.onerror = () => status("error");
-
-      pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-      pc.onicecandidate = ({ candidate }) => candidate && send("signal-ice", candidate);
-      pc.ontrack = (ev) => { remoteVideo.srcObject = ev.streams[0]; };
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "failed") status("connection failed");
-      };
-      localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-      setupEl.style.display = "none";
-      chatEl.style.display = "block";
-      peerBadge.textContent = "Looking for a partner…";
-
-      $("nextBtn").onclick = leaveAndRejoin;
-      $("leaveBtn").onclick = leaveAll;
-      $("muteBtn").onclick = () => {
-        const on = localStream.getAudioTracks().some(t => t.enabled);
-        localStream.getAudioTracks().forEach(t => t.enabled = !on);
-        $("muteBtn").textContent = on ? "Unmute" : "Mute";
-      };
-      $("camBtn").onclick = () => {
-        const on = localStream.getVideoTracks().some(t => t.enabled);
-        localStream.getVideoTracks().forEach(t => t.enabled = !on);
-        $("camBtn").textContent = on ? "Camera On" : "Camera Off";
-      };
-    };
-
-    function status(s){ statusEl.textContent = s; }
-    function send(type, data){
-      if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, data }));
-    }
-
-    async function onSignal(ev){
-      const msg = JSON.parse(ev.data);
-      const t = msg.type;
-      if (t === "welcome") return;
-
-      if (t === "matched") {
-        polite = !!msg.polite;
-        peerBadge.textContent = `Connected with ${msg.peer.screenName} (native ${msg.peer.native})`;
-
-        // Immediately attempt to establish the call
-        await maybeOffer();
-
-        // Show audio unlock button to comply with autoplay policies
-        audioBtn.style.display = "inline-block";
-        audioBtn.tabIndex = 0;
-        setTimeout(()=> audioBtn.focus(), 0);
-        audioBtn.onclick = async () => {
-          try {
-            remoteVideo.muted = false;
-            await remoteVideo.play().catch(()=>{});
-            // Optional: go fullscreen
-            const root = document.documentElement;
-            if (root.requestFullscreen) { try { await root.requestFullscreen(); } catch(e){} }
-          } finally {
-            audioBtn.style.display = "none";
-          }
-        };
-
-        return;
-      }
-      if (t === "peer-left") {
-        peerBadge.textContent = "Peer left. Reconnecting…";
-        await leaveRTCPeer();
-        location.reload();
-        return;
-      }
-      if (t === "signal-offer") {
-        const offer = msg.data;
-        const offerCollision = (makingOffer || pc.signalingState !== "stable");
-        ignoreOffer = !polite && offerCollision;
-        if (ignoreOffer) return;
-        isSettingRemoteAnswerPending = true;
-        await pc.setRemoteDescription(offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        send("signal-answer", pc.localDescription);
-        isSettingRemoteAnswerPending = false;
-        return;
-      }
-      if (t === "signal-answer") {
-        await pc.setRemoteDescription(msg.data);
-        return;
-      }
-      if (t === "signal-ice") {
-        try { await pc.addIceCandidate(msg.data); }
-        catch(e){ if(!ignoreOffer && !isSettingRemoteAnswerPending) throw e; }
-        return;
-      }
-    }
-
-    async function maybeOffer(){
-      if (!polite) return; // the other side will offer
-      try {
-        makingOffer = true;
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        send("signal-offer", pc.localDescription);
-      } finally {
-        makingOffer = false;
-      }
-    }
-
-    async function leaveRTCPeer(){
-      pc?.getSenders().forEach(s => s.track && s.track.stop());
-      pc?.close();
-    }
-    async function leaveAndRejoin(){
-      send("leave"); await leaveRTCPeer(); location.reload();
-    }
-    async function leaveAll(){
-      send("leave"); await leaveRTCPeer(); ws?.close(); location.reload();
-    }
-  </script>
+  <script src="./client.js" type="module"></script>
 </body>
 </html>
