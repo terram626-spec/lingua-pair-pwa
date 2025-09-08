@@ -1,61 +1,93 @@
-let pc, ws, localStream, polite=false, makingOffer=false, ignoreOffer=false;
-let pendingCandidates = []; // <-- buffer for early ICE
+let pc, ws, localStream;
+let polite=false, makingOffer=false, ignoreOffer=false;
+let pendingCandidates=[];
+let wsTimer=null, wsReconnectDelay=800, wsShouldReconnect=true;
+let joinInFlight=false, matched=false, hardFailTimer=null;
+let lastHello=null;
 
 const el = id => document.getElementById(id);
 const status = m => (el('status').textContent = m);
 const log = (...a)=>console.log('[LP]', ...a);
 
 async function getIceServers(){
-  try{
-    const r = await fetch('/config'); const j = await r.json();
-    log('ICE servers:', j.iceServers); return j.iceServers || [{urls:'stun:stun.l.google.com:19302'}];
-  }catch{ return [{urls:'stun:stun.l.google.com:19302'}]; }
+  try{ const r=await fetch('/config'); const j=await r.json(); log('ICE servers:', j.iceServers); return j.iceServers||[{urls:'stun:stun.l.google.com:19302'}]; }
+  catch{ return [{urls:'stun:stun.l.google.com:19302'}]; }
 }
 
 async function startLocal(){
   if (localStream) return localStream;
   localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-  el('localVideo').srcObject = localStream; return localStream;
+  el('localVideo').srcObject = localStream;
+  return localStream;
 }
 
-async function createPC(){
+async function buildPC(forceRelay=false){
   const iceServers = await getIceServers();
-  pc = new RTCPeerConnection({ iceServers });
-  (await startLocal()).getTracks().forEach(t => pc.addTrack(t, localStream));
+  const cfg = { iceServers };
+  if (forceRelay) cfg.iceTransportPolicy = 'relay';
+  const next = new RTCPeerConnection(cfg);
 
-  pc.ontrack = e => { el('remoteVideo').srcObject = e.streams[0]; };
+  (await startLocal()).getTracks().forEach(t => next.addTrack(t, localStream));
 
-  pc.onicecandidate = ({candidate})=>{
+  next.ontrack = e => { el('remoteVideo').srcObject = e.streams[0]; };
+
+  next.onicecandidate = ({candidate})=>{
     if (candidate) ws?.send(JSON.stringify({type:'signal-ice', data:candidate}));
   };
 
-  pc.oniceconnectionstatechange = ()=>{
-    log('iceConnectionState=', pc.iceConnectionState);
-    status(`ICE: ${pc.iceConnectionState}`);
-    if (['failed','disconnected'].includes(pc.iceConnectionState)) tryIceRestart();
-  };
-  pc.onconnectionstatechange = ()=>{
-    log('connectionState=', pc.connectionState);
-    status(`Peer: ${pc.connectionState}`);
+  next.oniceconnectionstatechange = ()=>{
+    log('iceConnectionState=', next.iceConnectionState);
+    status(`ICE: ${next.iceConnectionState}`);
+    if (next.iceConnectionState==='connected'){
+      clearTimeout(hardFailTimer);
+      wsReconnectDelay = 800;
+    }
+    if (['failed','disconnected'].includes(next.iceConnectionState)){
+      tryIceRestart();
+      clearTimeout(hardFailTimer);
+      hardFailTimer = setTimeout(()=>fallbackRelay(), 7000);
+    }
   };
 
-  pc.onnegotiationneeded = async ()=>{
+  next.onconnectionstatechange = ()=>{
+    log('connectionState=', next.connectionState);
+    status(`Peer: ${next.connectionState}`);
+  };
+
+  next.onnegotiationneeded = async ()=>{
     try{
       makingOffer = true;
-      const offer = await pc.createOffer({iceRestart:false});
-      await pc.setLocalDescription(offer);
-      ws?.send(JSON.stringify({type:'signal-offer', data:pc.localDescription}));
-    }finally{ makingOffer = false; }
+      const offer = await next.createOffer({iceRestart:false});
+      await next.setLocalDescription(offer);
+      ws?.send(JSON.stringify({type:'signal-offer', data:next.localDescription}));
+    }finally{ makingOffer=false; }
   };
 
-  // iOS audio gesture
-  el('enableAudio').onclick = ()=>{
-    el('enableAudio').classList.remove('muted');
-    el('remoteVideo').play().catch(()=>{});
-    const ac = new AudioContext(); ac.resume().catch(()=>{});
-  };
+  return next;
+}
 
-  return pc;
+async function createPC(){
+  pc?.close?.();
+  pendingCandidates=[];
+  matched = true;
+  clearTimeout(hardFailTimer);
+  pc = await buildPC(false);
+  hardFailTimer = setTimeout(()=>fallbackRelay(), 7000);
+}
+
+async function fallbackRelay(){
+  if (!pc || pc.iceConnectionState==='connected') return;
+  log('FALLBACK: forcing TURN only');
+  const old = pc;
+  try{ old.close(); }catch{}
+  pendingCandidates=[];
+  pc = await buildPC(true);
+  // kick a restart offer
+  try{
+    const offer = await pc.createOffer({iceRestart:true});
+    await pc.setLocalDescription(offer);
+    ws?.send(JSON.stringify({type:'signal-offer', data:pc.localDescription}));
+  }catch(e){ log('relay offer error', e); }
 }
 
 let restarting=false;
@@ -74,8 +106,20 @@ async function tryIceRestart(){
 function connectWS(){
   const proto = location.protocol==='https:'?'wss':'ws';
   ws = new WebSocket(`${proto}://${location.host}`);
-  ws.onopen = ()=>status('Connected to server. Waiting for partner…');
-  ws.onclose = ()=>status('Disconnected');
+  ws.onopen = ()=>{
+    status('Connected to server.');
+    if (wsTimer) clearInterval(wsTimer);
+    wsTimer = setInterval(()=>{ try{ ws.send(JSON.stringify({type:'ping'})); }catch{} }, 20000);
+    if (lastHello) setTimeout(()=>{ try{ ws.send(JSON.stringify(lastHello)); }catch{} }, 150);
+    wsReconnectDelay = 800; // reset backoff
+  };
+  ws.onclose = ()=>{
+    if (wsTimer) clearInterval(wsTimer);
+    if (!wsShouldReconnect) return;
+    status('Disconnected — reconnecting…');
+    setTimeout(connectWS, wsReconnectDelay);
+    wsReconnectDelay = Math.min(wsReconnectDelay*1.8, 15000);
+  };
   ws.onerror = e => log('WS error', e);
 
   ws.onmessage = async ev=>{
@@ -83,9 +127,9 @@ function connectWS(){
     if (msg.type==='welcome') return;
 
     if (msg.type==='matched'){
+      if (matched) return; // already matched; ignore duplicate
       polite = !!msg.polite;
       log('Matched. polite=',polite,'peer=',msg.peer);
-      pendingCandidates = []; // reset buffer
       await createPC();
       return;
     }
@@ -98,7 +142,6 @@ function connectWS(){
       if (ignoreOffer) return;
 
       await pc.setRemoteDescription(msg.data);
-      // flush any buffered ICE now that remoteDescription exists
       for (const c of pendingCandidates.splice(0)) {
         try { await pc.addIceCandidate(c); } catch(e){ log('flush addIceCandidate failed', e); }
       }
@@ -110,7 +153,6 @@ function connectWS(){
 
     if (msg.type==='signal-answer'){
       await pc.setRemoteDescription(msg.data);
-      // flush buffer after answer too
       for (const c of pendingCandidates.splice(0)) {
         try { await pc.addIceCandidate(c); } catch(e){ log('flush addIceCandidate failed', e); }
       }
@@ -118,10 +160,8 @@ function connectWS(){
     }
 
     if (msg.type==='signal-ice'){
-      // If remoteDescription not set yet, buffer the candidate
-      if (!pc.remoteDescription) {
-        pendingCandidates.push(msg.data);
-      } else {
+      if (!pc.remoteDescription) pendingCandidates.push(msg.data);
+      else {
         try { await pc.addIceCandidate(msg.data); }
         catch(e){ log('addIceCandidate failed', e); }
       }
@@ -131,16 +171,19 @@ function connectWS(){
     if (msg.type==='peer-left'){
       status('Partner left. Click “Find a partner” to match again.');
       try{ pc.close(); }catch{}
-      pc=null; el('remoteVideo').srcObject=null;
+      pc=null; matched=false; pendingCandidates=[];
+      el('remoteVideo').srcObject=null;
     }
   };
 }
 
 async function join(){
+  if (joinInFlight) return;
+  joinInFlight = true;
   await startLocal();
   if (!ws || ws.readyState!==WebSocket.OPEN) connectWS();
 
-  const payload = {
+  lastHello = {
     type:'hello',
     screenName: (el('screenName').value||'Guest').slice(0,24),
     native: el('native').value,
@@ -148,19 +191,25 @@ async function join(){
     wantLang: el('wantLang').value
   };
 
-  const trySend=()=>{
+  const sendHello=()=>{
     if (ws.readyState===WebSocket.OPEN){
-      ws.send(JSON.stringify(payload));
+      ws.send(JSON.stringify(lastHello));
       status('Waiting for a complementary partner…');
-    } else setTimeout(trySend, 200);
+      joinInFlight = false;
+    } else setTimeout(sendHello, 150);
   };
-  trySend();
+  sendHello();
 }
 
 function leave(){
+  wsShouldReconnect = false;
   try{ ws?.send(JSON.stringify({type:'leave'})); }catch{}
+  try{ ws?.close(); }catch{}
   try{ pc?.close(); }catch{}
-  pc=null; status('Left queue / call.');
+  pc=null; ws=null; matched=false; pendingCandidates=[];
+  clearInterval(wsTimer); wsTimer=null;
+  clearTimeout(hardFailTimer);
+  status('Left queue / call.');
 }
 
 document.getElementById('join').onclick = join;
